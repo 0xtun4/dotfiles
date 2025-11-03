@@ -1,0 +1,90 @@
+version: "3.8"
+
+services:
+  wg-easy:
+    environment:
+      - WG_HOST=${WG_HOST}
+      - PASSWORD=${WG_EASY_PASSWORD}
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Ho_Chi_Minh
+      - SERVERURL=auto
+      - SERVERPORT=51820
+      - PEERS=1
+      - PEERDNS=10.42.42.0
+      - INTERNAL_SUBNET=10.42.42.0
+      - ALLOWEDIPS=0.0.0.0/0,::/0
+    image: ghcr.io/wg-easy/wg-easy:latest
+    container_name: wg-easy
+    networks:
+      wg:
+        ipv4_address: 10.42.42.42
+        ipv6_address: fdcc:ad94:bacf:61a3::2a
+    volumes:
+      - etc_wireguard:/etc/wireguard
+      - /lib/modules:/lib/modules:ro
+    ports:
+      - "51820:51820/udp"
+      - "51821:51821/tcp"
+    env_file:
+      - .env
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+      # - NET_RAW # ⚠️ Uncomment if using Podman
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv6.conf.all.forwarding=1
+      - net.ipv6.conf.default.forwarding=1
+    restart: unless-stopped
+
+  coredns:
+    image: coredns/coredns:latest
+    container_name: coredns
+    volumes:
+      - ./coredns/Corefile:/Corefile
+    command: ["-conf", "/Corefile"]
+    networks:
+      internal:
+        ipv4_address: 10.13.13.53
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    restart: unless-stopped
+    volumes:
+      - ./caddy:/etc/caddy
+      - ./caddy/data:/data
+      - ./caddy/config:/config
+    networks:
+      - internal
+    expose:
+      - "80"
+      - "443"
+
+  whoami:
+    image: containous/whoami
+    container_name: whoami
+    expose:
+      - "80"
+    networks:
+      - internal
+    restart: unless-stopped
+
+networks:
+  wg:
+    driver: bridge
+    enable_ipv6: true
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.42.42.0/24
+        - subnet: fdcc:ad94:bacf:61a3::/64
+  internal:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.42.42.0/24
